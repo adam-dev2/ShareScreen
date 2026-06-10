@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { socket } from '../utils/socket.ts';
 import { useParams } from 'react-router-dom'
 const Sharer = () => {
@@ -6,7 +6,12 @@ const Sharer = () => {
   const remoteDescriptionRef = useRef(false);
   const ICECandidateQueueRef = useRef<RTCIceCandidateInit[]>([])
   const pcRef = useRef<RTCPeerConnection>(null)
+  const [shareScreeen, setShareScreen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream>(null);
+
   useEffect(() => {
+    socket.connect();
     const pc = new RTCPeerConnection();
     pcRef.current = pc;
 
@@ -18,6 +23,10 @@ const Sharer = () => {
         roomId,
         candidate: event.candidate
       })
+    };
+    pc.ontrack = (event) => {
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = event.streams[0];
     }
 
     socket.on('viewer-joined', async () => {
@@ -30,7 +39,7 @@ const Sharer = () => {
     })
 
     socket.on('answer', async (data) => {
-      await pc.setRemoteDescription(data.candidate)
+      await pc.setRemoteDescription(data.answer)
       remoteDescriptionRef.current = true;
 
       for (const candidate of ICECandidateQueueRef.current) {
@@ -51,18 +60,33 @@ const Sharer = () => {
   }, [])
   const handleShareScreen = async () => {
     const stream = await navigator.mediaDevices.getDisplayMedia();
+    streamRef.current = stream;
+    setShareScreen(true);
     const pc = pcRef.current;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
     for (const track of stream.getTracks()) {
       pc?.addTrack(track, stream);
     }
-
   }
+
+  useEffect(() => {
+    if (shareScreeen && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [shareScreeen])
+
   return (
     <div>
-      <button
-        onClick={handleShareScreen} >ShareScreen</button>
-    </div>
-  )
+      {!shareScreeen ? (
+        <button onClick={handleShareScreen}>Share Screen</button>
+      ) : (
+        <video ref={videoRef} autoPlay playsInline />
+
+      )}    </div>
+  );
 }
 
-export default Sharer
+export default Sharer;
